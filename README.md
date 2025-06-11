@@ -1,2 +1,2 @@
 # bingmaps2
-Tidy Bingmaps2
+Tidy BingMaps2 source for conversion to Azure Maps

@@ -1,0 +1,329 @@
+<!doctype HTML>
+<html>
+<!-- BingMaps Jul25 Programming: Jordan T. Hastings -->
+
+<head>
+ <title>BingMaps</title>
+ <meta charset="utf-8" />
+ <meta http-equiv="pragma" content="no-cache">
+ <meta http-equiv="expires" content="-1">
+ <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+ <style> body { margin:0; padding:0; } </style>
+ <style>
+ .controls {
+  background-color: #fff;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  box-sizing: border-box;
+  font-family: Roboto;
+  font-size: 14px;
+  font-weight: 300;
+  height: 29px;
+  margin-left: 10px;
+  margin-top: 1px;
+  outline: none;
+  padding: 0 11px 0 13px;
+  text-overflow: ellipsis;
+  width: 300px;
+ }
+ </style>
+ <script src="https://www.bing.com/api/maps/mapcontrol?key=ArToy79PBqszDARXyic8MIZtSAb-raj-mCjz31uJWhuFIOSAzNmjrhvv5owRnTvo" ></script>
+ <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDmrLN2z0y1M2Dg8hvhfBckywh_kDXQC_k&libraries=places"> </script> 
+</head>
+
+<body>
+ <div style="height:32px; margin-top:6px;">
+  <big>
+  <img src='MSBingLogo.png'>
+  &nbsp; <button onClick="hidePlace()">Address:</button> <input id=addr size=28>
+  <input hidden id=locale class=controls placeholder="Lookup a placename">
+  <select hidden id=addrlist onChange="reInitPlace()">
+   <option value="0,0">Select ...</option>
+   <option value="-1,-1">Enter Address or Placename</option>
+   <option value="33.66862,-117.86363">4590 MacArthur Blvd, Newport Beach, CA</option>
+   <option value="33.66718,-117.86257">4500 MacArthur Blvd, Renaissance NB Hotel, CA</option>
+   <option value="33.59827,-117.86596">714 Narcissus Ave, Newport Beach, CA</option>
+   <option value="39.20423,-106.95279">431 Edgewood Ln, Snowmass Village, CO</option>
+   <option value="33.679354,-117.8615">John Wayne Airport, Santa Ana, CA</option>
+   <option value="33.64577,-117.84272">University of California, Irvine, CA</option>
+   <option value="0,0">Set Anchor to Most Recent Marker</option>
+  </select>
+  &nbsp; | <span onClick="clearCode()">@<sup><sub>&reg;</sup></sup>&thinsp;Code:</span> <input Id=code size=8 placeholder="XY@xxyy" onChange="typeMarkerB(this)" onInput="clearCode1(this)">
+  &nbsp; <!--button Id=more onClick="showMore()">More</button -->
+  &nbsp; <button onClick="clearMarkers()">Clear</button>
+  </big>
+ </div>
+ <hr size=3 style="margin-left:0; text-align:left; width:720px;">
+ <div style="position:relative; height:644px;">
+  <div id=map style="position:absolute; width:100%; height:100%; z-Index:0"></div>
+ </div>
+ <hr size=2 style="margin-left:0; text-align:left; width:720px;">
+
+ <script>
+// UTM code that Phil D is using
+ const R_deg=Math.PI/180,deg_m=90/10e6;
+ const Re=6378.137,f1=1/298.257223563,GSize10=10e6,N0=0,E0=500,k0=0.9996;
+ const n1=f1/(2-f1),n2=n1*n1,n3=n1*n2,Rn=Re/(1+n1)*(1+n2/4*(1+n2/16));
+ const alfa1=0.5*n1-2/3*n2+5/16*n3,alfa2=13/48*n2-3/5*n3,alfa3=61/240*n3;
+ const beta1=0.5*n1-2/3*n2+37/96*n3,beta2=1/48*n2+1/15*n3,beta3=17/480*n3;
+ const gama1=2*n1-2/3*n2-2*n3,gama2=7/3*n2-8/5*n3,gama3=56/15*n3;
+
+ function toUTM(LLPnt) { var Result = {Eing:NaN,Ning:NaN,Zone:0};
+  var lat = LLPnt.lat, lng = LLPnt.lng;
+  var shem = (lat<0?1:0), zone = Math.trunc(lng/6)+30;
+  var lda = lng*R_deg, sinlda = Math.sin(lda-(6*zone-183)*R_deg), coslda  =Math.sqrt(1-sinlda*sinlda);
+  var phi = lat*R_deg, sinphi = Math.sin(phi);
+  var sqrt2n1 = 2*Math.sqrt(n1)/(1+n1);
+  var t2 = Math.sinh(Math.atanh(sinphi) -sqrt2n1*Math.atanh(sqrt2n1*sinphi));
+  var xsi1 = Math.atan(t2/coslda);
+  var eta1 = Math.atanh(sinlda/Math.sqrt(1+t2*t2));
+  var E = E0 +k0*Rn*(eta1 +alfa1*Math.cos(2*xsi1)*Math.sinh(2*eta1) +alfa2*Math.cos(4*xsi1)*Math.sinh(4*eta1) +alfa3*Math.cos(6*xsi1)*Math.sinh(6*eta1));
+  var N = N0 +k0*Rn*(xsi1 +alfa1*Math.sin(2*xsi1)*Math.cosh(2*eta1) +alfa2*Math.sin(4*xsi1)*Math.cosh(4*eta1) +alfa3*Math.sin(6*xsi1)*Math.cosh(6*eta1));
+  Result.Eing = Math.round(E*1e3)%GSize10; Result.Ning = Math.round(N*1e3)%GSize10;
+  Result.Zone=zone; if(shem) {Result.Ning += GSize10; Result.Zone = -Result.Zone;}
+  return Result;
+ }
+	
+ function toLL(ENPnt, Zone) {var Result = {lng:NaN, lat:NaN};
+  var shem, zone;
+  var Em = ENPnt.Eing, Ea = 0, Nm = ENPnt.Ning, Na = 0; 
+  if (Zone === undefined) return Result;
+  var zone = Math.abs(Zone); shem = (zone < 0 ? 1 : 0); //alert(zone+" "+shem+"; "+Ea+" "+Na+"; "+GSize10)
+  var dE = 0; if (Ea) if (Ea%GSize10 > GSize10/2) {if (Em < (Ea+GSize10/2)%GSize10) dE=+1;} else {if (Em >= (Ea-GSize10/2)%GSize10) dE=-1;}
+  var dN = 0; if (Na) if (Na%GSize10 > GSize10/2) {if (Nm < (Na+GSize10/2)%GSize10) dN=+1;} else {if (Nm >= (Na-GSize10/2)%GSize10) dN=-1;}
+  var E = ((Math.trunc(Ea/GSize10)+dE)*GSize10 +Em)*1e-3;
+  var N = ((Math.trunc(Na/GSize10)+dN)*GSize10 +Nm)*1e-3; 
+  var xsi = (N - N0 + shem*10000)/(k0*Rn), eta = (E - E0)/(k0*Rn);
+  var xsi1 = xsi -beta1*Math.sin(2*xsi)*Math.cosh(2*eta) -beta2*Math.sin(4*xsi)*Math.cosh(4*eta) -beta3*Math.sin(6*xsi)*Math.cosh(6*eta); 
+  var eta1 = eta -beta1*Math.cos(2*xsi)*Math.sinh(2*eta) -beta2*Math.cos(4*xsi)*Math.sinh(4*eta) -beta3*Math.cos(6*xsi)*Math.sinh(6*eta);
+  var lda0 = (6*zone - 183)*R_deg;
+  var lda = lda0 + Math.atan(Math.sinh(eta1)/Math.cos(xsi1));
+  var chi = Math.asin(Math.sin(xsi1)/Math.cosh(eta1));
+  var phi = chi + gama1*Math.sin(2*chi) + gama2*Math.sin(4*chi) + gama3*Math.sin(6*chi);
+  Result.lng = Math.round(1e5*lda/R_deg)*1e-5; Result.lat = Math.round(1e5*phi/R_deg)*1e-5;
+  if (shem) Result.lat = -Result.lat
+  return Result;
+ }
+ 
+ function UGRS(LL) {
+  const ALFABET = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+  var lat = LL.lat, lng = LL.lng;
+  var u = toUTM({lat:lat, lng:lng}); //alert(u.Eing+"_"+u.Ning+" "+u.Zone) 
+  var e = Math.trunc(u.Eing/1e5), n = Math.trunc((u.zone<0 ? 1e7-u.Ning : u.Ning)/1e5), z = Math.abs(u.Zone); //alert(e+"_"+n+" "+z)
+  var b = ALFABET.charAt(12+Math.trunc(lat/8)+(lat<0?-1:0)); //alert (b)
+  var c = ALFABET.charAt(8*((z-1)%3)+e-1); //alert(c)
+  var r = ALFABET.charAt(6*((z-1)%2)+n%20); //alert(r)
+  return ((100+z).toString().slice(1)+b+c+r+u.Eing.toString().slice(-5)+u.Ning.toString().slice(-5));
+ }
+
+  function clearCode() { with(document.getElementById("code")) { value = ""; setAttribute("style","color:black"); focus();} }
+
+  function clearCode1(th) {if (th.value.slice(-1)==" ") th.value="";} 
+
+var Mtype = -2; // Marker type: -ve no XY prefix; abs # of suffix digits
+document.getElementById("code").setAttribute("placeholder","@xxyy.xx"); 
+document.getElementById("addr").setAttribute("hidden", "hidden"); document.getElementById("addrlist").removeAttribute("hidden"); 
+var POSN={lat:33.66848, lng:-117.86359, adj:""} //WFB Defaults: UTM="11SMT 19940 25733", ZOOM=19; 
+document.getElementById("addr").value = "4590 MacArthur Blvd, Newport Beach, CA, USA"; 
+
+google.maps.event.addDomListener(window, 'load', initMap);
+
+var anchor, map, marker, markers=[], mlabel, mlabel0; // NB: globals
+var markerLatitude, markerLongitude; 
+
+  function hidePlace() { //console.log("hidePlace")
+    document.getElementById("locale").setAttribute("hidden", "hidden"); 
+	document.getElementById("addrlist").removeAttribute("hidden");
+    document.getElementById("addrlist").selectedIndex = 0;
+  }
+  function clearPlace() { 
+    with(document.getElementById("addr")) {value = ""; setAttribute("hidden", "hidden");} 
+	document.getElementById("addrlist").setAttribute("hidden", "hidden");
+	document.getElementById("locale").removeAttribute("hidden");
+	initPlace(); 
+  }
+  function initPlace() { 
+    const input = document.getElementById("locale"); input.focus();
+    if (input.value) value = "";
+    const autocomplete = new google.maps.places.Autocomplete(input, {fields: ["place_id", "geometry", "formatted_address", "name"],});
+    autocomplete.addListener("place_changed", () => { //console.log("at autocomplete")
+      const place = autocomplete.getPlace();
+      if (!place.geometry || !place.geometry.location) return;
+	  POSN.lat = place.geometry.location.lat(); POSN.lng = place.geometry.location.lng();
+	  initMap1(place.formatted_address);
+    });
+  }
+
+  function reInitPlace() { //console.log("reInitPlace")
+    var i = document.getElementById("addrlist").selectedIndex;
+    if (i==1) { clearPlace(); return;}
+	if (i>0) v = document.getElementById("addrlist").options[i].value; 
+    POSN.lat = parseFloat(v.slice(0,v.indexOf(","))); POSN.lng = parseFloat(v.slice(v.indexOf(",")+1));
+	if(marker && POSN.lat==0 && POSN.lng==0) { POSN.lat = markerLatitude; POSN.lng = markerLongitude;}
+    initMap1(document.getElementById("addrlist").options[i].text);
+	with (document.getElementById("addrlist")) {if (i==options.length-1) selectedIndex=0;}
+  }
+
+  async function initMap() {//console.log("at initMap")
+    const { Map } = await google.maps.importLibrary("maps");
+    initMap1();
+  }
+
+var CXX, Cxxyy, Cxx50, Cyy50, uPosn;
+var rect, rects=[];
+var lastCode, lastUTM={};
+
+  function initMap1(placeName) {
+    uPosn = toUTM(POSN); console.log("Anchor: "+uPosn.Eing+"_"+uPosn.Ning) 
+    CXY = uPosn.Eing.toString().slice(3,4)+uPosn.Ning.toString().slice(4,5);
+    Cxxyy = "@"+uPosn.Eing.toString().slice(-2)+uPosn.Ning.toString().slice(-2);	
+    Cxx50 = Cxxyy.slice(1,3) -50, Cyy50 = Cxxyy.slice(3,5) -50;
+   var Mxxyy = (Mtype<0?"":CXY)+ "@"+uPosn.Eing.toString().slice(-Math.abs(Mtype))+uPosn.Ning.toString().slice(-Math.abs(Mtype));
+    lastCode = Mxxyy+"."; lastUTM.Eing = uPosn.Eing; lastUTM.Ning = uPosn.Ning; lastUTM.Zone = uPosn.Zone;
+    markers.length = 0; 
+   var utx = UGRS(POSN); console.log(utx); 
+   var anch = toLL(uPosn, uPosn.Zone); //console.log(anch); 
+   const mapOptions = {center:POSN, zoom:(placeName&&isNaN(parseInt(placeName))?16:18), minZoom:14, maxZoom:20, clickableIcons:false, tilt: 0, rotateControl: false,};
+   {//Bing option
+    markerLatitude = POSN.lat; markerLongitude = POSN.lng; 
+	document.querySelector('title').textContent = "Bingmaps2";
+	map = new Microsoft.Maps.Map('#map', {center:new Microsoft.Maps.Location(POSN.lat, POSN.lng), zoom:(placeName&&isNaN(parseInt(placeName))?16:18)}); 
+    map.setView({mapTypeId: Microsoft.Maps.MapTypeId.aerial, zoom:18});
+	Mxxyy = "@"+uPosn.Eing.toString().slice(-3,-1)+uPosn.Ning.toString().slice(-3,-1);
+    Axx = parseInt(Mxxyy.slice(1,3)), Ayy = parseInt(Mxxyy.slice(3,5));
+    var pin = new Microsoft.Maps.Pushpin(map.getCenter(), {color:'blue', title:Mxxyy, subTitle:'(anchor)', text:'+'});
+    markers[0] = pin; map.entities.push(pin);
+    Microsoft.Maps.Events.addHandler(map, 'click', clickMarkerB);
+    lastCode = Mxxyy+"."; lastUTM.Eing = uPosn.Eing; lastUTM.Ning = uPosn.Ning; lastUTM.Zone = uPosn.Zone; 
+	drawRect({lat:markerLatitude, lng:markerLongitude}, 500, 'blue')  
+   }
+//document.getElementById("more").removeAttribute("disabled");
+    clearCode();
+  } 
+
+  function drawCircle(siz, clr) { 
+  // Draw a circle around the anchor
+	const deg_m = 90/1e7, rad_deg = Math.PI/180, coslat = Math.cos(POSN.lat*rad_deg), pts=[];
+	pts[0] = new Microsoft.Maps.Location(POSN.lat+siz*deg_m, POSN.lng);
+	for (i=1; i<=360; i++) pts[i] = new Microsoft.Maps.Location(POSN.lat+siz*Math.cos(i*rad_deg)*deg_m, POSN.lng+siz*Math.sin(i*rad_deg)*deg_m/coslat);
+    var line = new Microsoft.Maps.Polyline(pts, {strokeColor:clr, strokeThickness:3, }); //strokeDashArray:[4, 4]});
+    map.entities.push(line);
+  }
+
+  function drawRect(posn, siz, clr) {
+  // Draw a rectangle around the anchor
+   var LL, pts=[];
+   var u = toUTM(posn), z = u.Zone;
+   var uEing = parseInt(u.Eing.toString()), uNing = parseInt(u.Ning.toString());
+	 u.Eing = uEing -siz; u.Ning = uNing -siz; LL = toLL(u, z); pts[0] = new Microsoft.Maps.Location(LL.lat, LL.lng); 
+	 u.Eing = uEing +siz; u.Ning = uNing -siz; LL = toLL(u, z); pts[1] = new Microsoft.Maps.Location(LL.lat, LL.lng); 
+	 u.Eing = uEing +siz; u.Ning = uNing +siz; LL = toLL(u, z); pts[2] = new Microsoft.Maps.Location(LL.lat, LL.lng); 
+	 u.Eing = uEing -siz; u.Ning = uNing +siz; LL = toLL(u, z); pts[3] = new Microsoft.Maps.Location(LL.lat, LL.lng); 
+	 pts[4] = pts[0]; 
+   var rect = new Microsoft.Maps.Polyline(pts, {strokeColor:clr, strokeThickness:(clr=="blue"?2:1) });
+	 if (clr=="red") rects.push(rect);
+     map.entities.push(rect);
+  }
+  
+ var rmarkers = "";	
+  function clickMarkerB(e) { clickMarker1( e['location'].latitude, e['location'].longitude);}
+
+  function clickMarker1(elat, elng) {
+//Click a marker 
+   var u = toUTM({lat:elat, lng:elng}), z = u.Zone; //Fix 30Jul24
+   var d = Math.sqrt((u.Eing-uPosn.Eing)*(u.Eing-uPosn.Eing) + (u.Ning-uPosn.Ning)*(u.Ning-uPosn.Ning)); if (d>9e9) return; 
+   const MXY = u.Eing.toString().slice(3,4)+u.Ning.toString().slice(4,5);
+   const uEing = u.Eing.toString(), uNing = u.Ning.toString(); 
+   var Mxxyy = (Mtype==2?uEing.slice(-3,-2)+uNing.slice(-3,-2):"")+"@"+uEing.slice(-Math.abs(Mtype))+uNing.slice(-Math.abs(Mtype));
+   var rMxxyy = uEing.slice(-4,-3)+uNing.slice(-4,-3)+Mxxyy; 
+    var i, j, ij, xx = parseInt(Mxxyy.slice(1,3)), yy = parseInt(Mxxyy.slice(-2)); //console.log(xx+","+yy)
+    if (d>50) {  //add 23Jun: infer Qcase beyond 50m
+     i = 0; if (u.Eing<uPosn.Eing-50) i = -1; else if(u.Eing>uPosn.Eing+50) i = +1;
+     j = 0; if (u.Ning<uPosn.Ning-50) j = -1; else if(u.Ning>uPosn.Ning+50) j = +1;
+    } else {
+	 if (Cxx50>=0) i = (xx>=(100-Cxx50)?+1:0); else i = (xx>=(100+Cxx50)?-1:0);
+	 if (Cyy50>=0) j = (yy>=(100-Cyy50)?+1:0); else j = (yy>=(100+Cyy50)?-1:0);
+    }
+	ij = (5 +i -3*j); //console.log(xx+","+yy+"; "+i+","+j+","+ij)
+  { //Bing option
+ markerLatitude = elat; markerLongitude = elng;
+    ij = ""; Mxxyy = "@"+uEing.slice(-3,-1)+uNing.slice(-3,-1);
+   var Mxy = u.Eing.toString().slice(-1)+u.Ning.toString().slice(-1);	
+   var fm=false; if (rmarkers.indexOf(rMxxyy)<0) { rmarkers += rMxxyy; fm = true;}
+    marker = new Microsoft.Maps.Pushpin(new Microsoft.Maps.Location(elat, elng), {title:(fm?Mxxyy:""), subTitle:'', text:""});
+	markers.push(marker); map.entities.push(marker); 
+    if (fm) { rect = rectb(u, uPosn.Zone); rects.push(rect); map.entities.push(rect);}
+//var r = addMarkerRow(Mxxyy, u);
+  zoomTo({lat:elat, lng:elng});
+    lastCode = Mxxyy+"."+Mxy; lastUTM = toUTM({lat:elat, lng:elng});
+//document.getElementById("more").removeAttribute("disabled");
+   }
+  }
+
+  function typeMarkerB(th) { typeMarker1(th); }
+
+  function typeMarker1(th) {
+// Type a marker 
+   var u = {}, v = th.value, ij="", q, z;
+    if (parseInt(v.charAt(0))>0) if (v.charAt(1)=="@") { v = v.charAt(0)+v.slice(2); }
+    if (th.value.slice(-1)=='.') v = v.slice(0,4);
+    u.Eing = uPosn.Eing; u.Ning = uPosn.Ning; z = uPosn.Zone; //console.log(u)
+    Mxxyy = "@"+v;
+//var r = addMarkerRow(Mxxyy, u);
+   var d, dx, dy, f=false, i0, j0, q0, qxxyy=Mxxyy, xx, yy;
+   var uE4 = parseInt(u.Eing.toString().slice(-4,-3)); uN4 = parseInt(u.Ning.toString().slice(-4,-3));
+	q = parseInt(qxxyy.charAt(0)); xx = parseInt(qxxyy.slice(-4,-2)); yy = parseInt(qxxyy.slice(-2));
+    dx = xx-Axx; d = Math.abs(dx); i0 = 0; if (Axx>=50) {if (dx+100<d) i0 = +1} else {if (100-dx<d) i0 = -1}; if (i0) dx += i0*100;
+    dy = yy-Ayy; d = Math.abs(dy); j0 = 0; if (Ayy>=50) {if (dy+100<d) j0 = +1} else {if (100-dy<d) j0 = -1}; if (j0) dy += j0*100;
+    q0 = 5 +i0 -3*j0; //console.log(q+" "+i0+" "+j0+" "+q0+"; "+xx+" "+yy+", "+dx+" "+dy)
+	if (isNaN(q)) q = q0;
+	i = ((q-1)%3) -1;  j = 1 -Math.trunc((q-1)/3)
+	dx += 100*(i-i0); dy += 100*(j-j0);
+	if (f) {if (i0) dx += 100*i0; if (j0) dy += 100*j0;} 
+	u.Eing += 10*dx; u.Ning += 10*dy; //console.log(u) //NB:updated marker location, metres
+   { //Bing option
+    lastCode = Mxxyy; lastUTM.Eing = u.Eing; lastUTM.Ning = u.Ning; lastZone = u.Zone;  //NB: Deep copy
+   var LL = toLL(u, z); //console.log(LL)
+ markerLatitude = LL.lat; markerLongitude = LL.lng;
+    marker = new Microsoft.Maps.Pushpin(new Microsoft.Maps.Location(LL.lat, LL.lng), {title:"@"+Mxxyy.slice(-4), subTitle:'', icon:'https://upload.wikimedia.org/wikipedia/commons/c/ca/1x1.png'});
+    markers.push(marker); map.entities.push(marker);
+   var rect = rectb(u, z); rects.push(rect); map.entities.push(rect);
+  zoomTo(LL);  //Add 04May25
+    nowMore = false;  // Add 04May25  Flag a recent new marker
+//document.getElementById("more").removeAttribute("disabled");
+    clearCode();
+   }
+  }
+  function rectb(u, z) { 
+   var LL={}, rectPts = new Array(5);
+   var uEing = parseInt(u.Eing.toString()), uNing = parseInt(u.Ning.toString());
+    uEing -= (uEing%10 -5); uNing -= (uNing%10 -5);
+    u.Eing = uEing -5; u.Ning = uNing -5; LL = toLL(u, z); rectPts[0] = new Microsoft.Maps.Location(LL.lat, LL.lng); 
+    u.Eing = uEing +5; u.Ning = uNing -5; LL = toLL(u, z); rectPts[1] = new Microsoft.Maps.Location(LL.lat, LL.lng); 
+    u.Eing = uEing +5; u.Ning = uNing +5; LL = toLL(u, z); rectPts[2] = new Microsoft.Maps.Location(LL.lat, LL.lng); 
+    u.Eing = uEing -5; u.Ning = uNing +5; LL = toLL(u, z); rectPts[3] = new Microsoft.Maps.Location(LL.lat, LL.lng); 
+    rectPts[4] = rectPts[0]; 
+    return new Microsoft.Maps.Polyline(rectPts, {strokeThickness:3, strokeColor:"#FF0"});
+  }
+
+  function clearMarkers() {
+ rmarkers = "";  //add 25Aug
+   { //Bing option
+    for (var L = markers.length; --L>0;) map.entities.remove(markers[L]);
+	markers.length = 1;
+    for (var L = rects.length; --L>=0;) map.entities.remove(rects[L]);
+	rects.length = 0;
+//clearMarkerRows();
+   }
+  }
+  
+  function zoomTo(g) { 
+   var z = map.getZoom();
+	if (g===undefined) map.setView({center:new Microsoft.Maps.Location(POSN.lat, POSN.lng), zoom:(z>=18?15:19)});
+	else map.setView({center:new Microsoft.Maps.Location(g.lat, g.lng), zoom:19});
+  }
+  
+</script>
+</body>
+</html>
